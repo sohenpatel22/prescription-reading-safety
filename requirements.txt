@@ -1,0 +1,7 @@
+pillow>=10
+numpy>=1.26
+rapidfuzz>=3
+google-genai>=1.20
+python-dotenv>=1
+pydantic>=2
+pytest>=8
