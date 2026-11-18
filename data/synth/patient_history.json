@@ -1,0 +1,80 @@
+{
+ "mia|cote|1998-11-25": {
+  "[\"VENLAFAXINE\", 75.0, \"capsule\", \"ER\"]": "02354721"
+ },
+ "tariq|gill|1964-09-22": {
+  "[\"CITALOPRAM\", 10.0, \"tablet\", \"IR\"]": "02325047"
+ },
+ "wei|gagnon|1941-09-26": {
+  "[\"GABAPENTIN\", 600.0, \"tablet\", \"IR\"]": "02410990"
+ },
+ "grace|kim|1962-08-15": {
+  "[\"HYDROXYZINE\", 10.0, \"capsule\", \"IR\"]": "00646059"
+ },
+ "grace|dubois|1963-05-30": {
+  "[\"RISPERIDONE\", 2.0, \"tablet\", \"IR\"]": "02533944"
+ },
+ "kwame|walsh|1961-05-30": {
+  "[\"METFORMIN\", 1000.0, \"tablet\", \"ER\"]": "02565536"
+ },
+ "owen|khan|1986-07-15": {
+  "[\"RAMIPRIL\", 2.5, \"capsule\", \"IR\"]": "02310511"
+ },
+ "owen|gill|2009-10-01": {
+  "[\"HYDROXYZINE\", 50.0, \"capsule\", \"IR\"]": "00646016"
+ },
+ "william|fraser|1982-03-03": {
+  "[\"HYDROCHLOROTHIAZIDE\", 25.0, \"tablet\", \"IR\"]": "00021474"
+ },
+ "aiden|ali|1980-12-09": {
+  "[\"ESCITALOPRAM\", 20.0, \"tablet\", \"IR\"]": "02263254"
+ },
+ "wei|johnson|2009-06-23": {
+  "[\"MONTELUKAST\", 4.0, \"tablet\", \"IR\"]": "02354977"
+ },
+ "aiden|wilson|1965-11-16": {
+  "[\"CITALOPRAM\", 30.0, \"tablet\", \"IR\"]": "02543060"
+ },
+ "evelyn|cote|2007-06-23": {
+  "[\"CITALOPRAM\", 40.0, \"tablet\", \"IR\"]": "02275570"
+ },
+ "priya|martin|1962-06-24": {
+  "[\"TRAZODONE\", 150.0, \"tablet\", \"IR\"]": "02442825"
+ },
+ "daniel|silva|1968-04-02": {
+  "[\"LISINOPRIL\", 5.0, \"tablet\", \"IR\"]": "02525186"
+ },
+ "mateo|cote|2001-10-18": {
+  "[\"CLOPIDOGREL\", 300.0, \"tablet\", \"IR\"]": "02398591"
+ },
+ "chloe|johnson|1948-12-24": {
+  "[\"HYDROXYZINE\", 10.0, \"capsule\", \"IR\"]": "00646059"
+ },
+ "chloe|khan|1992-03-18": {
+  "[\"RISPERIDONE\", 0.5, \"tablet\", \"IR\"]": "02563339"
+ },
+ "owen|murphy|1979-01-24": {
+  "[\"WARFARIN\", 2.5, \"tablet\", \"IR\"]": "02242926"
+ },
+ "daniel|johnson|1969-11-06": {
+  "[\"ROSUVASTATIN\", 10.0, \"tablet\", \"IR\"]": "02397803"
+ },
+ "samuel|fernandes|1983-05-02": {
+  "[\"SALBUTAMOL\", 0.1, \"inhaler\", \"IR\"]": "02419858"
+ },
+ "fatima|singh|1988-11-02": {
+  "[\"PREGABALIN\", 25.0, \"capsule\", \"IR\"]": "02449838"
+ },
+ "ethan|rossi|1979-06-11": {
+  "[\"QUETIAPINE\", 100.0, \"tablet\", \"IR\"]": "02317907"
+ },
+ "mei|brown|1939-03-22": {
+  "[\"WARFARIN\", 4.0, \"tablet\", \"IR\"]": "02242927"
+ },
+ "ana|murphy|": {
+  "[\"HYDROCHLOROTHIAZIDE\", 12.5, \"tablet\", \"IR\"]": "02274086"
+ },
+ "charlotte|rossi|2007-08-13": {
+  "[\"LEVOTHYROXINE\", 0.05, \"tablet\", \"IR\"]": "02213192"
+ }
+}
