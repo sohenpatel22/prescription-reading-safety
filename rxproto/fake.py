@@ -33,6 +33,10 @@ def fake(kind, rec, fields=None):
 
     raw = dict(drug_name=pg["drug_text"], strength=pg["strength_text"], qty=str(lab["qty"]), refills=str(rec["refills"]),
                sig=pg["sig_text"], patient_dob_as_written=pg["dob_text"], prescriber_license=lab["prescriber_license"])
+    if kind == "T":
+        smudged = "smudge_strength" in rec["traps"]
+        return dict(written="typed" if rec["style"] == "printed" else "mixed",
+                    legibility_drug=2 if smudged else 4, problems=["smudge"] if smudged else [])
     if kind == "A":
         out = {f: read(f, lab[f]) for f in FIELDS}
         if not rec["ds_written"] and rng.random() < 0.5:

@@ -17,7 +17,7 @@ from typing import List
 from PIL import Image, ImageFilter, ImageOps
 from pydantic import BaseModel
 
-from . import din, llm
+from . import din, llm, triage
 from .generate import FIELDS
 from .sig import ismp_flags, parse_sig
 
@@ -173,20 +173,34 @@ def run_a(rec, img_path, fake=None):
 CRITICAL_RECHECK = ["drug_name", "strength", "qty", "refills", "sig", "patient_dob_as_written", "prescriber_license"]
 
 
-def run_b(rec, img_path, history, fake=None):
+CORE = ("drug_name", "strength", "qty", "sig")
+
+
+def run_b(rec, img_path, history, fake=None, mode="full", img=None):
+    """mode: "full" (set-up B, every prescription fully checked) or a lane of set-up C:
+    "easy" (one read; returns {"escalate": ...} if a critical check fails), "medium" (two reads,
+    stronger model on disputed or failing fields) or "hard" (two reads, stronger model on all critical fields)."""
     fast, strong = llm.model_names()
-    img = clean_image(Image.open(img_path))
-    big = img.resize((int(img.width * 1.5), int(img.height * 1.5)), Image.LANCZOS)
+    img = img if img is not None else clean_image(Image.open(img_path))
     r1 = llm.ask_image(fast, png_bytes(img), PROMPT_B1, RxB1, "B1", fake_answer=fake and (lambda: fake("B1", rec)))
-    r2 = llm.ask_image(fast, png_bytes(big), PROMPT_B2, RxB2, "B2", fake_answer=fake and (lambda: fake("B2", rec)))
     vals = {k: str(r1.get(k, "") or "") for k in RxB1.model_fields if k != "uncertain_fields"}
     uncertain = set(r1.get("uncertain_fields") or [])
-    disputed = [f for f in CRITICAL_RECHECK if not same_value(f, vals.get(f, ""), r2.get(f, ""))]
-    notes = {f: [] for f in FIELDS}
-
-    # rule checks on the first read decide which fields also get the second look
     pre = _rules(vals, history)
-    need = sorted(set(disputed) | {f for f in ("drug_name", "strength", "qty", "sig") if pre["red"].get(f)})
+    if mode == "easy":
+        failing = [f for f in CORE if pre["red"].get(f)] + [f for f in CORE if f in uncertain]
+        if failing:
+            return {"escalate": sorted(set(failing))}
+        r2, disputed = {}, []
+    else:
+        big = img.resize((int(img.width * 1.5), int(img.height * 1.5)), Image.LANCZOS)
+        r2 = llm.ask_image(fast, png_bytes(big), PROMPT_B2, RxB2, "B2", fake_answer=fake and (lambda: fake("B2", rec)))
+        disputed = [f for f in CRITICAL_RECHECK if not same_value(f, vals.get(f, ""), r2.get(f, ""))]
+
+    # rule checks on the first read decide which fields also get the stronger model
+    need = set(disputed) | {f for f in CORE if pre["red"].get(f)}
+    if mode == "hard":
+        need |= {"drug_name", "strength", "qty", "refills", "sig"}
+    need = sorted(need)
     strong_used = {}
     if need:
         sch = strong_schema(need)
@@ -232,9 +246,30 @@ def run_b(rec, img_path, history, fake=None):
                         signals=dict(disputed=any(s in disputed for s in src), strong=any(s in strong_used for s in src),
                                      unresolved=any(strong_used.get(s) in ("three reads disagree", "stronger model read it differently") for s in src),
                                      uncertain=any(u in uncertain for u in src), doc_type=vals.get("doc_type", "")))
-    return dict(id=rec["id"], setup="B", fields=fields, din=post["match"]["din"], din_candidates=post["match"]["candidates"],
+    return dict(id=rec["id"], setup="B", mode=mode, fields=fields, din=post["match"]["din"], din_candidates=post["match"]["candidates"],
                 din_basis=post["match"]["din_basis"], din_note=post["match"].get("note", ""),
                 flags=flags, raw=dict(read1=r1, read2=r2, strong=strong_used, disputed=disputed))
+
+
+# ---------------- set-up C: triage + three lanes ----------------
+def run_c(rec, img_path, history, fake=None, channel=None):
+    raw = Image.open(img_path)
+    tri = triage.triage(rec, raw, fake, channel)
+    img, steps = triage.clean(raw, tri)
+    lane = tri["band"].lower()
+    res = run_b(rec, img_path, history, fake, mode=lane, img=img)
+    escalated = []
+    if "escalate" in res:
+        escalated = res["escalate"]
+        lane = "medium"
+        res = run_b(rec, img_path, history, fake, mode=lane, img=img)
+    for f in res["flags"].values():
+        f["signals"]["band"] = tri["band"]
+    res.update(setup="C", band=tri["band"], lane=lane, escalated=escalated, cleanup=steps,
+               triage=dict(reasons=tri["reasons"], checks=tri["checks"], written=tri["written"], arrived=tri["arrived"]))
+    if tri["band"] == "Hard":
+        res["band_note"] = "Hard: " + ", ".join(tri["reasons"]) + ". Please take the lead."
+    return res
 
 
 def _rules(v, history):
