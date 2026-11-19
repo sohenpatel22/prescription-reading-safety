@@ -83,8 +83,10 @@ def features(field, fl, pred):
     g = np.zeros(8)
     g[GROUPS[field]] = 1
     doc = (s.get("doc_type") or "").lower()
+    band = s.get("band", "")
     return np.concatenate([[1.0, s["disputed"], s["strong"], s["unresolved"], s["uncertain"], bool(fl["red"]),
-                            bool(fl["amber"]), "hand" in doc, "fax" in doc, str(pred or "").strip() == ""], g]).astype(float)
+                            bool(fl["amber"]), "hand" in doc, "fax" in doc, str(pred or "").strip() == "",
+                            band == "Medium", band == "Hard"], g]).astype(float)
 
 
 def fit_logreg(X, y, l2=1.0, iters=800, lr=0.5):
@@ -173,10 +175,13 @@ def score(recs, results):
             for f in FIELDS:
                 oc = outcome(f, r["fields"].get(f, ""), rec)
                 out.append(dict(id=r["id"], style=rec["style"], field=f, outcome=oc, wrong=oc != "correct",
-                                issue=bool(rec["issues"].get(f)), pred=r["fields"].get(f, ""), fl=r["flags"].get(f)))
+                                issue=bool(rec["issues"].get(f)), pred=r["fields"].get(f, ""), fl=r["flags"].get(f),
+                                band=r.get("band", "")))
         rows[setup] = out
-    if "B" in rows:
-        B = rows["B"]
+    for setup in ("B", "C"):
+        if setup not in rows:
+            continue
+        B = rows[setup]
         X = np.array([features(x["field"], x["fl"], x["pred"]) for x in B])
         y = np.array([x["wrong"] for x in B], float)
         p = crossfit_p(X, y, np.array([x["id"] for x in B]))
@@ -202,14 +207,15 @@ def _per_rx(rows, ids, pred, base=lambda x: True):
 def report(recs, results, rows, path=RES / "report.md"):
     ids = [r["id"] for r in recs if all(any(x["id"] == r["id"] for x in results[s]) for s in results)]
     fake = os.getenv("RX_FAKE") == "1"
-    L = ["# Prescription reading: set-up A vs set-up B", ""]
+    L = ["# Prescription reading: set-ups A, B and C", ""]
     if fake:
         L += ["> Dry run with the fake reader (RX_FAKE=1). These numbers only test the code.", ""]
     L += [f"Synthetic test set: {len(ids)} prescriptions ({', '.join(f'{s}: {sum(1 for r in recs if r['id'] in ids and r['style']==s)}' for s in ('printed','handwritten','fax'))}), "
           f"{len(FIELDS)} fields each. Drugs and strengths from Health Canada's Drug Product Database; people and clinics invented.",
-          "", "Set-up A is a typical single-pass design (one model call, simple product lookup).",
+          "", "A: a typical single-pass design (one model call, simple product lookup). B: every prescription fully checked. "
+          "C: triage into Easy / Medium / Hard, then a lane per band.",
           "Synthetic images are easier than real faxes, so treat these numbers as a comparison, not an accuracy estimate.", ""]
-    setups = [s for s in ("A", "B") if s in rows]
+    setups = [s for s in ("A", "B", "C") if s in rows]
     L += ["## 1. Reading accuracy (95% CI by bootstrap over prescriptions)", "", "| Measure | " + " | ".join(f"Set-up {s}" for s in setups) + " |", "|---|" + "---|" * len(setups)]
     def acc_line(name, base):
         cells = []
@@ -226,15 +232,17 @@ def report(recs, results, rows, path=RES / "report.md"):
         n = [int(all(not x["wrong"] for x in rows[s] if x["id"] == i)) for i in ids]
         cells.append(ci(boot_ci(n, [1] * len(ids))))
     L.append("| Prescriptions with every field right | " + " | ".join(cells) + " |")
-    if len(setups) == 2:
-        an, d = _per_rx(rows["A"], ids, lambda x: not x["wrong"])
-        bn, _ = _per_rx(rows["B"], ids, lambda x: not x["wrong"])
-        dd = boot_diff(an, bn, d)
-        ac, dc = _per_rx(rows["A"], ids, lambda x: not x["wrong"], lambda x: x["field"] in CRITICAL)
-        bc, _ = _per_rx(rows["B"], ids, lambda x: not x["wrong"], lambda x: x["field"] in CRITICAL)
-        dc2 = boot_diff(ac, bc, dc)
-        L += ["", f"Paired difference B minus A, all fields: **{100*dd[0]:+.1f} points** (95% CI {100*dd[1]:+.1f} to {100*dd[2]:+.1f}); "
-              f"critical fields: **{100*dc2[0]:+.1f} points** ({100*dc2[1]:+.1f} to {100*dc2[2]:+.1f})."]
+    L.append("")
+    for a_, b_ in (("A", "B"), ("A", "C"), ("B", "C")):
+        if a_ in rows and b_ in rows:
+            an, d = _per_rx(rows[a_], ids, lambda x: not x["wrong"])
+            bn, _ = _per_rx(rows[b_], ids, lambda x: not x["wrong"])
+            dd = boot_diff(an, bn, d)
+            ac, dc = _per_rx(rows[a_], ids, lambda x: not x["wrong"], lambda x: x["field"] in CRITICAL)
+            bc, _ = _per_rx(rows[b_], ids, lambda x: not x["wrong"], lambda x: x["field"] in CRITICAL)
+            dc2 = boot_diff(ac, bc, dc)
+            L.append(f"Paired difference {b_} minus {a_}, all fields: **{100*dd[0]:+.1f} points** (95% CI {100*dd[1]:+.1f} to {100*dd[2]:+.1f}); "
+                     f"critical fields: **{100*dc2[0]:+.1f} points** ({100*dc2[1]:+.1f} to {100*dc2[2]:+.1f}).  ")
     L += ["", "## 2. Accuracy by field", "", "| Field | " + " | ".join(setups) + " |", "|---|" + "---|" * len(setups)]
     for f in FIELDS:
         L.append(f"| {f} | " + " | ".join(pct(np.mean([not x['wrong'] for x in rows[s] if x['field'] == f and x['id'] in ids])) for s in setups) + " |")
@@ -272,34 +280,56 @@ def report(recs, results, rows, path=RES / "report.md"):
     L.append("")
     L.append("Set-up A always takes the first product its lookup finds, so it cannot follow 'No substitution', a patient's last fill or the pharmacy's habit, and it guesses when there is no history.")
 
-    if "B" in rows:
-        B = [x for x in rows["B"] if x["id"] in ids]
-        y = np.array([x["wrong"] for x in B])
-        p = np.array([x["p_wrong"] for x in B])
-        L += ["", "## 5. Risk highlights (set-up B only; set-up A has none, like today)", "",
-              f"A field **should be flagged** if it was read wrong **or** carries a planted safety issue "
-              f"(ISMP abbreviation, strength not marketed, days-supply mismatch, ambiguous date, controlled drug). "
+    flagged = [x for x in ("B", "C") if x in rows]
+    if flagged:
+        L += ["", "## 5. Risk highlights (set-up A has none, like today)", "",
+              "A field **should be flagged** if it was read wrong **or** carries a planted safety issue "
+              "(ISMP abbreviation, strength not marketed, days-supply mismatch, ambiguous date, controlled drug). "
               f"Confidence scores are out-of-fold (5-fold, by prescription). Thresholds: amber at {T_AMBER:.0%}, red at {T_RED:.0%} chance of error.", "",
-              "| Measure | Rules + learned score | Rules only |", "|---|---|---|"]
-        for key in ("color", "color_rules"):
-            pass
-        def m(key):
-            fl = np.array([x[key] != "green" for x in B])
-            should = np.array([x["wrong"] or x["issue"] for x in B])
-            issue = np.array([x["issue"] for x in B])
+              "| Measure | " + " | ".join(f"Set-up {x}" for x in flagged) + " |", "|---|" + "---|" * len(flagged)]
+
+        def m(rs, key="color"):
+            y = np.array([x["wrong"] for x in rs])
+            fl = np.array([x[key] != "green" for x in rs])
+            should = np.array([x["wrong"] or x["issue"] for x in rs])
+            issue = np.array([x["issue"] for x in rs])
+            green = ~fl
+            p = np.array([x["p_wrong"] for x in rs])
             return dict(rate=fl.mean(), catch=(fl & should).sum() / max(should.sum(), 1),
                         catch_err=(fl & y).sum() / max(y.sum(), 1), catch_issue=(fl & issue).sum() / max(issue.sum(), 1),
-                        false=(fl & ~should).sum() / max((~should).sum(), 1), n_should=int(should.sum()), n_err=int(y.sum()), n_issue=int(issue.sum()))
-        a, r = m("color"), m("color_rules")
-        L += [f"| Share of fields flagged (amber or red) | {pct(a['rate'])} | {pct(r['rate'])} |",
-              f"| Should-flag fields caught ({a['n_should']} in total) | {pct(a['catch'])} | {pct(r['catch'])} |",
-              f"| Reading errors caught ({a['n_err']}) | {pct(a['catch_err'])} | {pct(r['catch_err'])} |",
-              f"| Planted safety issues caught ({a['n_issue']}) | {pct(a['catch_issue'])} | {pct(r['catch_issue'])} |",
-              f"| Fine fields flagged anyway (false alarms) | {pct(a['false'])} | {pct(r['false'])} |",
-              "", f"Confidence score quality: AUROC {auroc(p, y.astype(float)):.2f}, calibration error (ECE) {ece(p, y.astype(float)):.3f}."]
-        reds = [x for x in B if x["color"] == "red"]
-        if reds:
-            L.append(f"Red fields: {len(reds)}; of these, {sum(1 for x in reds if x['wrong'] or x['issue'])} were truly wrong or had a planted issue.")
+                        false=(fl & ~should).sum() / max((~should).sum(), 1), green_err=(green & y).sum() / max(green.sum(), 1),
+                        green_n=int(green.sum()), green_wrong=int((green & y).sum()),
+                        auroc=auroc(p, y.astype(float)), ece=ece(p, y.astype(float)), n_should=int(should.sum()))
+        R = {x: m([r for r in rows[x] if r["id"] in ids]) for x in flagged}
+        rules_only = {x: m([r for r in rows[x] if r["id"] in ids], "color_rules") for x in flagged}
+        L += ["| Share of fields flagged (amber or red) | " + " | ".join(pct(R[x]["rate"]) for x in flagged) + " |",
+              "| Should-flag fields caught | " + " | ".join(f"{pct(R[x]['catch'])} of {R[x]['n_should']}" for x in flagged) + " |",
+              "| ...with the rules alone (no learned score) | " + " | ".join(pct(rules_only[x]["catch"]) for x in flagged) + " |",
+              "| Reading errors caught | " + " | ".join(pct(R[x]["catch_err"]) for x in flagged) + " |",
+              "| Planted safety issues caught | " + " | ".join(pct(R[x]["catch_issue"]) for x in flagged) + " |",
+              "| Fine fields flagged anyway (false alarms) | " + " | ".join(pct(R[x]["false"]) for x in flagged) + " |",
+              "| **Error rate among green fields** (green means green) | " + " | ".join(f"{pct(R[x]['green_err'])} ({R[x]['green_wrong']} of {R[x]['green_n']})" for x in flagged) + " |",
+              "| Confidence score AUROC / calibration error | " + " | ".join(f"{R[x]['auroc']:.2f} / {R[x]['ece']:.3f}" for x in flagged) + " |"]
+
+    if "C" in rows:
+        Cres = {x["id"]: x for x in results["C"] if x["id"] in ids}
+        L += ["", "## 5b. Lanes (set-up C)", "",
+              "| Band | Prescriptions | Moved up a lane | Model calls per Rx | Field accuracy | Critical-field accuracy | Error rate among green fields |",
+              "|---|---|---|---|---|---|---|"]
+        for band in ("Easy", "Medium", "Hard"):
+            bid = [i for i, r in Cres.items() if r.get("band") == band]
+            if not bid:
+                L.append(f"| {band} | 0 | | | | | |")
+                continue
+            rs = [x for x in rows["C"] if x["id"] in bid]
+            crit = [x for x in rs if x["field"] in CRITICAL]
+            green = [x for x in rs if x.get("color") == "green"]
+            calls = np.mean([Cres[i].get("usage", {}).get("calls", 0) for i in bid])
+            L.append(f"| {band} | {len(bid)} | {sum(1 for i in bid if Cres[i].get('escalated'))} | {calls:.2f} | "
+                     f"{pct(np.mean([not x['wrong'] for x in rs]))} | {pct(np.mean([not x['wrong'] for x in crit]))} | "
+                     f"{pct(sum(x['wrong'] for x in green) / max(len(green), 1))} |")
+        if "B" in rows:
+            L += ["", "Set-up B gives every prescription the full checks; set-up C spends them by band. Compare the accuracy rows in section 1 with the calls and tokens in section 6."]
 
     L += ["", "## 6. Cost and time per prescription", "", "| Measure | " + " | ".join(setups) + " |", "|---|" + "---|" * len(setups)]
     agg = {}
