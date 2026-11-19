@@ -79,3 +79,45 @@ def test_end_to_end_dry_run(tmp_path, monkeypatch):
     monkeypatch.setattr(evaluate, "RES", tmp_path)
     p = evaluate.report(recs, res, rows, path=tmp_path / "report.md")
     assert "Dry run with the fake reader" in p.read_text(encoding="utf-8")
+
+
+def test_triage_bands_and_cleanup(tmp_path):
+    from PIL import Image
+    from rxproto import triage
+    recs = generate.generate(n=6, out_dir=tmp_path, seed=11)
+    for r in recs:
+        img = Image.open(tmp_path / "images" / f"{r['id']}.png")
+        ch = triage.image_checks(img)
+        assert ch["black_white"] == (r["style"] == "fax")
+        tri = triage.decide(ch, {"written": "typed", "legibility_drug": 5, "problems": []})
+        assert tri["band"] == ("Medium" if r["style"] == "fax" else "Easy")
+        cleaned, steps = triage.clean(img, tri)
+        assert cleaned.size == img.size and "contrast" in steps
+    worse = triage.decide(ch, {"written": "handwritten", "legibility_drug": 1, "problems": ["smudge"]})
+    assert worse["band"] == "Hard" and "smudge" in worse["reasons"]
+
+
+def test_lanes_and_escalation(tmp_path, monkeypatch):
+    monkeypatch.setenv("RX_FAKE", "1")
+    monkeypatch.setattr(llm, "CACHE", tmp_path / "cache")
+    out = tmp_path / "synth"
+    recs = generate.generate(n=9, out_dir=out, seed=3)
+    hist = generate.load_history(out)
+    from rxproto.fake import fake
+    bands = set()
+    for r in recs:
+        res = readers.run_c(r, out / "images" / f"{r['id']}.png", hist, fake)
+        assert res["setup"] == "C" and res["band"] in ("Easy", "Medium", "Hard")
+        assert res["lane"] in ("easy", "medium", "hard")
+        if res["escalated"]:
+            assert res["lane"] == "medium"
+        bands.add(res["band"])
+    assert len(bands) >= 2
+
+
+def test_rulebook_catches_impossible_strength():
+    from rxproto import coverage
+    assert 300.0 in coverage.strength_variants("500", swaps_only=True)
+    assert 500.0 not in coverage.strength_variants("500")
+    ok = coverage.marketed_mg("METFORMIN", "tablet", "IR")
+    assert 500.0 in ok and 300.0 not in ok

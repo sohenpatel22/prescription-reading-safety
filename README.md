@@ -1,12 +1,16 @@
 # prescription-reading-safety
 
-Reading prescriptions with a vision LLM is easy to demo and hard to trust. This repo compares two ways of doing it
+Reading prescriptions with a vision LLM is easy to demo and hard to trust. This repo compares three ways of doing it
 on the same labelled test set:
 
 - **A (baseline):** one Gemini call returns every field; the DIN comes from a plain name + strength lookup.
 - **B (checked):** the same model, wrapped in checks. Critical fields are read twice, arithmetic is done in code,
   the product is matched against Health Canada's Drug Product Database, rule checks run, and only disputed or
   failing fields go to a stronger model. Every field ends up green, amber or red, with a reason.
+- **C (triaged):** first sort the prescription into Easy, Medium or Hard (image checks + a quick look by a small
+  model), clean the image based on what was found, then use a lane per band: Easy gets one read, Medium a second
+  read of critical fields, Hard two reads plus the stronger model on every critical field. An Easy prescription that
+  fails a critical check moves up a lane.
 
 Both are scored field by field with the same rules, and the report shows where each one goes wrong.
 
@@ -37,10 +41,11 @@ Patient and pharmacy histories are simulated in `data/synth/`.
 pip install -r requirements.txt
 cp .env.example .env        # add GEMINI_API_KEY (free from Google AI Studio)
 python -m rxproto models    # check which model names your key can use
-python -m rxproto run --setup both --limit 10   # small trial first
-python -m rxproto run --setup both
+python -m rxproto run --setup all --limit 10    # small trial first
+python -m rxproto run --setup all
 python -m rxproto score     # writes results/report.md
 python -m rxproto review    # writes results/review.html
+python -m rxproto coverage  # what the rule book catches with no model at all (free)
 ```
 
 Model answers are cached in `cache/`, so a run can be stopped and resumed without paying twice. To use Vertex AI
@@ -60,8 +65,9 @@ python -m rxproto generate --n 150
 - Field accuracy for A and B with 95% bootstrap intervals, by prescription type, plus the paired B - A difference
 - Wrong values, blanks and invented values counted separately
 - DIN results: whether the pre-selected product is safe, and whether the right maker was chosen in each situation
-- For B: how many reading errors and planted issues the flags catch, false alarms, and the quality of the
-  confidence score (out-of-fold AUROC and calibration)
+- For B and C: how many reading errors and planted issues the flags catch, false alarms, the error rate among
+  green fields, and the quality of the confidence score (out-of-fold AUROC and calibration)
+- For C: results per band (Easy, Medium, Hard), how many moved up a lane, and model calls per prescription
 - Model calls, tokens and time per prescription
 
 ## Layout
@@ -69,11 +75,13 @@ python -m rxproto generate --n 150
 ```
 rxproto/
   dpd.py        Health Canada Drug Product Database: download, load, look up
+  triage.py     Easy / Medium / Hard: image checks, quick model look, band, clean-up
+  coverage.py   misreads the rule book catches on its own
   generate.py   synthetic prescriptions, traps and histories
   sig.py        write and parse directions; ISMP "do not use" checks
   din.py        product matching
   llm.py        Gemini client with cache, rate limit and call cap
-  readers.py    set-ups A and B
+  readers.py    set-ups A, B and C
   evaluate.py   scoring, confidence model, report
   fake.py       fake reader for dry runs
 tests/
@@ -86,6 +94,8 @@ tests/
 - The confidence model is fitted on 150 prescriptions with 5-fold cross-fitting. It shows the method, not a
   validated model.
 - Histories for DIN selection are simulated.
+- Triage infers how a prescription arrived from the image; in production that comes from the intake system.
+  The band grid is a starting point; with labelled data its weights would be learned.
 
 ## Data source
 
