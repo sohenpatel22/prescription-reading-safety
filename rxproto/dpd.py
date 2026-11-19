@@ -1,8 +1,4 @@
-"""Health Canada Drug Product Database (DPD): load the public extract and look products up.
-
-Source: Health Canada, Drug Product Database (Open Government Licence - Canada).
-The extract (allfiles.zip, marketed products) is downloaded into data/dpd_raw/.
-"""
+"""Health Canada Drug Product Database (DPD): load the public extract and look products up."""
 import csv
 import io
 import json
@@ -130,8 +126,7 @@ def products():
 
 
 def group_key(p):
-    """Products in one group are interchangeable for a prescription: same single ingredient,
-    same strength, same form family, same release type."""
+    """Group key: same ingredient, strength, form and release."""
     ing = p["ingredients"][0]
     mg = to_mg(ing["strength"], ing["unit"])
     return (ing["base"], round(mg, 6) if mg is not None else (ing["strength"], ing["unit"]), p["form_family"], p["release"])

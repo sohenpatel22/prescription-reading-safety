@@ -1,13 +1,4 @@
-"""How much can the rule book catch on its own, with no model at all?
-
-For every prescription in the test set:
-- strength: every single-character misread of the strength number (one digit changed, dropped or added,
-  or the decimal point shifted). A misread is caught if the new strength is not sold in Canada for that
-  drug, form and release type.
-- drug name: every one-letter misspelling of the generic name. It is caught if the name no longer matches
-  a drug, or matches only approximately (flagged amber). It slips through if it is exactly another real drug.
-These numbers come from Health Canada's Drug Product Database and plain code. No model is involved.
-"""
+"""How much can the rule book catch on its own, with no model at all?"""
 import json
 import string
 from collections import Counter
@@ -16,8 +7,7 @@ from . import din, dpd
 
 
 def strength_variants(text, swaps_only=False):
-    """'500' -> {400.0, 50.0, 5000.0, ...}: values reachable by one character edit of a number string.
-    swaps_only=True keeps only one digit read as another digit (the most realistic misread)."""
+    """Values one character edit away, e.g. '500' -> 400, 50, 5000."""
     out = set()
     digits = "0123456789"
     for i, ch in enumerate(text):

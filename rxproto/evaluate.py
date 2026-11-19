@@ -1,5 +1,4 @@
-"""Score both set-ups against the labels with the same field rules, add confidence scores and colours to
-set-up B, and write a comparison report with 95% bootstrap confidence intervals."""
+"""Score the set-ups against the labels and write the report."""
 import json
 import os
 import re
@@ -256,7 +255,7 @@ def report(recs, results, rows, path=RES / "report.md"):
     byid = {r["id"]: r for r in recs}
     dmaps = {s: {x["id"]: x["din"] for x in results[s]} for s in setups}
     marketed = [i for i in ids if byid[i].get("group_dins")]
-    # Safety: whatever maker is pre-selected must belong to the right product group (a blank is not wrong, just unfilled)
+    # Safety: the pre-selected DIN must be in the right product group (blank is not wrong)
     cells = []
     for s in setups:
         picked = [i for i in marketed if dmaps[s][i]]

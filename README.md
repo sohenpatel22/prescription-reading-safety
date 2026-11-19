@@ -12,7 +12,25 @@ on the same labelled test set:
   read of critical fields, Hard two reads plus the stronger model on every critical field. An Easy prescription that
   fails a critical check moves up a lane.
 
-Both are scored field by field with the same rules, and the report shows where each one goes wrong.
+All three are scored field by field with the same rules, and the report shows where each one goes wrong.
+
+## First run (30 prescriptions)
+
+Gemini 3.5 Flash for the reads, Gemini 3.1 Pro as the stronger model, 3.5 Flash-Lite for triage. Full report:
+[docs/first_run_30rx.md](docs/first_run_30rx.md).
+
+| | A | B | C |
+|---|---|---|---|
+| Fields read right | 97.7% | 97.7% | 97.9% |
+| Critical fields read right | 99.3% | 99.3% | 99.3% |
+| Right product pre-selected | 92.9% | 96.2% | 96.2% |
+| Patient's usual maker kept | 0 / 7 | 5 / 7 | 5 / 7 |
+| Planted safety issues flagged | no flags | 100% | 100% |
+| Errors among green fields | - | 1.1% | 1.7% |
+| Cost per prescription | ~1.2¢ | ~2.4¢ | ~2.4¢ |
+
+On clean synthetic images the three read about equally well; the gains are in product matching and flagging.
+B and C each got one strength wrong that A got right, which is what the colours and the review step are for.
 
 ## Test set
 
@@ -39,7 +57,7 @@ Patient and pharmacy histories are simulated in `data/synth/`.
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env        # add GEMINI_API_KEY (free from Google AI Studio)
+cp .env.example .env        # add GEMINI_API_KEY, or OPENROUTER_API_KEY
 python -m rxproto models    # check which model names your key can use
 python -m rxproto run --setup all --limit 10    # small trial first
 python -m rxproto run --setup all
@@ -48,7 +66,8 @@ python -m rxproto review    # writes results/review.html
 python -m rxproto coverage  # what the rule book catches with no model at all (free)
 ```
 
-Model answers are cached in `cache/`, so a run can be stopped and resumed without paying twice. To use Vertex AI
+Model answers are cached in `cache/`, so a run can be stopped and resumed without paying twice. `RX_MAX_USD`
+stops a run once it has spent that much. To use Vertex AI
 instead of an API key, set the `GOOGLE_*` variables in `.env` and run `gcloud auth application-default login`.
 
 Without a key, `RX_FAKE=1` runs the whole pipeline with a fake reader (useful for testing, not for results).
@@ -62,7 +81,7 @@ python -m rxproto generate --n 150
 
 ## What the report contains
 
-- Field accuracy for A and B with 95% bootstrap intervals, by prescription type, plus the paired B - A difference
+- Field accuracy for each set-up with 95% bootstrap intervals, by prescription type, plus paired differences
 - Wrong values, blanks and invented values counted separately
 - DIN results: whether the pre-selected product is safe, and whether the right maker was chosen in each situation
 - For B and C: how many reading errors and planted issues the flags catch, false alarms, the error rate among
@@ -80,7 +99,7 @@ rxproto/
   generate.py   synthetic prescriptions, traps and histories
   sig.py        write and parse directions; ISMP "do not use" checks
   din.py        product matching
-  llm.py        Gemini client with cache, rate limit and call cap
+  llm.py        Gemini / OpenRouter client with cache, retries and a spending cap
   readers.py    set-ups A, B and C
   evaluate.py   scoring, confidence model, report
   fake.py       fake reader for dry runs
@@ -90,7 +109,7 @@ tests/
 ## Limits
 
 - Synthetic images are cleaner than real faxes and real handwriting, so absolute accuracy here will be higher
-  than in practice. The comparison between A and B is the useful part.
+  than in practice. The comparison between the set-ups is the useful part.
 - The confidence model is fitted on 150 prescriptions with 5-fold cross-fitting. It shows the method, not a
   validated model.
 - Histories for DIN selection are simulated.

@@ -1,5 +1,4 @@
-"""Fake reader for dry runs without an API key: copies the label and injects random reading errors.
-Only useful for testing the code paths; its scores mean nothing."""
+"""Fake reader for dry runs: copies the label and injects reading errors."""
 import random
 import re
 

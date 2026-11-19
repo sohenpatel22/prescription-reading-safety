@@ -1,7 +1,4 @@
-"""Gemini calls with an on-disk cache, a simple rate limit, retries, usage counting and a call cap.
-
-RX_FAKE=1 swaps in a fake reader so the pipeline can be tested without a key.
-"""
+"""Gemini calls with a disk cache, rate limit, retries and spending caps."""
 import hashlib
 import json
 import os
@@ -66,8 +63,7 @@ def model_names():
 
 
 def _client():
-    """AI Studio key by default. For Vertex AI set GOOGLE_GENAI_USE_VERTEXAI=true, GOOGLE_CLOUD_PROJECT and
-    GOOGLE_CLOUD_LOCATION, then run `gcloud auth application-default login`."""
+    """AI Studio key by default."""
     from google import genai
     if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("1", "true"):
         return genai.Client(vertexai=True, project=os.getenv("GOOGLE_CLOUD_PROJECT"),
@@ -160,8 +156,7 @@ def _real_call(model, image_bytes, prompt, schema):
 
 
 def _openrouter_call(model, image_bytes, prompt, schema):
-    """Same Gemini models through OpenRouter (OpenAI-style API). Used when OPENROUTER_API_KEY is set.
-    Returns (answer, [in, out, thinking], seconds, exact USD cost reported by OpenRouter or None)."""
+    """Same Gemini models through OpenRouter (OpenAI-style API)."""
     import base64
     import urllib.error
     import urllib.request

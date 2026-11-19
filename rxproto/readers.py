@@ -1,11 +1,4 @@
-"""Readers for the two set-ups.
-
-A (baseline): one Gemini call for all 13 fields, then a plain name + strength lookup for the DIN.
-B (checked):  clean the image, read once, re-read the critical fields independently, do the arithmetic
-              in code, match the product, run the rule checks, and send only disputed or failing fields
-              to a stronger model. Each field ends up green, amber or red with a reason.
-Confidence scores for B are fitted in evaluate.py.
-"""
+"""Readers for set-ups A, B and C."""
 import io
 import json
 import math
@@ -177,9 +170,7 @@ CORE = ("drug_name", "strength", "qty", "sig")
 
 
 def run_b(rec, img_path, history, fake=None, mode="full", img=None):
-    """mode: "full" (set-up B, every prescription fully checked) or a lane of set-up C:
-    "easy" (one read; returns {"escalate": ...} if a critical check fails), "medium" (two reads,
-    stronger model on disputed or failing fields) or "hard" (two reads, stronger model on all critical fields)."""
+    """Set-up B (mode="full") or one lane of set-up C ("easy", "medium", "hard")."""
     fast, strong = llm.model_names()
     img = img if img is not None else clean_image(Image.open(img_path))
     r1 = llm.ask_image(fast, png_bytes(img), PROMPT_B1, RxB1, "B1", fake_answer=fake and (lambda: fake("B1", rec)))

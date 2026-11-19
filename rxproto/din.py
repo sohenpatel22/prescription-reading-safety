@@ -1,9 +1,4 @@
-"""Drug-to-DIN matching.
-
-simple_lookup: what a quick first version often does (name + strength string match, first hit).
-match: the proposed matcher (name/brand resolution with fuzzy fallback, release type, single-ingredient
-products only, strength in mg, form family, then the pharmacy's usual DIN from past selections).
-"""
+"""Drug-to-DIN matching."""
 import json
 import re
 
@@ -29,8 +24,7 @@ def strength_mg(text):
 
 
 def simple_lookup(drug_text, strength_text):
-    """Baseline: any marketed product whose ingredient or brand contains the name and whose strength
-    number matches; first by DIN. No release-type, combination or pharmacy-preference handling."""
+    """Baseline: first marketed product whose name and strength match."""
     name = (drug_text or "").upper().strip()
     ps = parse_strength(strength_text)
     if not name or not ps:
@@ -74,13 +68,7 @@ def resolve_fuzzy(drug_text):
 
 
 def match(drug_text, strength_text, form_hint="", history=None, patient_dins=None, no_sub=False):
-    """Step 1 finds the product group (ingredient, strength, form, release): that is the safety part.
-    Step 2 picks the maker inside the group, in this order:
-      1. "No substitution" + a brand written -> that brand's DIN (if the brand is not in the group: red)
-      2. the patient's last fill of this product -> same maker again
-      3. the pharmacy's usual DIN for this product (past "DIN selected")
-      4. otherwise pre-select nothing: the pharmacist picks from the short list (no guessing)
-    history: {group: din}; patient_dins: {group: din} for this patient."""
+    """Step 1 finds the product group (ingredient, strength, form, release): that is the safety part."""
     out = dict(din="", group="", base="", candidates=[], reasons=[], name_score=0, runner_up=None, marketed=[],
                din_basis="no_match")
     bases, release, score, runner = resolve_fuzzy(drug_text)

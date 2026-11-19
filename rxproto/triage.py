@@ -1,14 +1,4 @@
-"""Triage: sort a prescription into Easy, Medium or Hard before reading it, and clean the image
-according to what was found.
-
-1. Image checks (code, free): black-and-white fax look, blur, contrast, tilt, uneven lighting, specks.
-2. A quick look by a small, cheap model at a low-resolution copy: typed / handwritten / mixed,
-   legibility of the drug area, visible problems.
-3. Band = starting grid (how it was written x how it arrived), moved up one band by poor condition.
-   The grid is a starting point; with labelled data the weights would be learned instead.
-
-Clean-up is ordinary image processing chosen from the reasons. Nothing redraws the page.
-"""
+"""Triage: sort a prescription into Easy, Medium or Hard and clean the image."""
 import io
 import os
 from typing import List

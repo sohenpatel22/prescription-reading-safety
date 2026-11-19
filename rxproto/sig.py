@@ -1,9 +1,4 @@
-"""Directions (sig): write them for synthetic prescriptions, and parse them back into parts.
-
-Parsed form: dose (number), unit (tablet/capsule/puff), route, per_day (doses per day), prn (bool).
-The parser handles both pharmacy shorthand ("1 tab PO BID") and plain English
-("Take 1 tablet by mouth twice daily").
-"""
+"""Directions (sig): write them for synthetic prescriptions, and parse them back into parts."""
 import re
 
 FREQ = {  # code -> (per_day, shorthand, plain English)

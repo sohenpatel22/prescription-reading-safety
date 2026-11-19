@@ -1,10 +1,4 @@
-"""Make a synthetic, fully labelled set of Canadian-style prescriptions.
-
-Every drug and strength comes from Health Canada's Drug Product Database (marketed products).
-Patients, prescribers and clinics are invented. Three styles: printed (clinic software),
-handwritten (Ink Free font with jitter, blue ink), and fax (either of those, degraded).
-Some prescriptions carry planted traps; each trap is recorded in the label.
-"""
+"""Make a synthetic, fully labelled set of Canadian-style prescriptions."""
 import hashlib
 import json
 import math
@@ -268,12 +262,7 @@ def _plain(s):
 
 
 def assign_din_basis(rec, rng, pharmacy_known, patient_hist):
-    """Decide which DIN the pharmacist should end up with, and why. The page and both histories follow from it.
-    no_substitution: prescriber wrote a brand + "No substitution" -> that brand's DIN only.
-    patient_last_fill: this patient had this product before -> same maker again.
-    pharmacy_usual: the pharmacy's usual DIN for this product (from its past selections).
-    none: no signal -> the pharmacist picks; a confident pre-selection would be a guess.
-    not_marketed: the strength is not sold -> nothing should be pre-selected."""
+    """Decide which DIN the pharmacist should end up with, and why."""
     if not rec["group"]:
         rec.update(din_basis="not_marketed", pharmacy_din="")
         return

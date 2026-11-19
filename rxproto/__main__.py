@@ -1,14 +1,4 @@
-"""Command line.
-
-python -m rxproto build-dpd            # turn data/dpd_raw/allfiles.zip into data/dpd_products.json
-python -m rxproto generate --n 150     # make the synthetic test set
-python -m rxproto models               # list Gemini models your key can use
-python -m rxproto run --setup all      # run set-ups A, B and C (cached; safe to stop and rerun)
-python -m rxproto score                # write results/report.md
-python -m rxproto review --n 6         # write results/review.html (what the pharmacist would see)
-python -m rxproto coverage             # what the rule book catches with no model (free)
-Set RX_FAKE=1 to dry-run everything without a key (the scores only test the code).
-"""
+"""Command line."""
 import argparse
 import base64
 import html
