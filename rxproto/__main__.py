@@ -3,9 +3,10 @@
 python -m rxproto build-dpd            # turn data/dpd_raw/allfiles.zip into data/dpd_products.json
 python -m rxproto generate --n 150     # make the synthetic test set
 python -m rxproto models               # list Gemini models your key can use
-python -m rxproto run --setup both     # run set-up A and/or B (cached; safe to stop and rerun)
+python -m rxproto run --setup all      # run set-ups A, B and C (cached; safe to stop and rerun)
 python -m rxproto score                # write results/report.md
 python -m rxproto review --n 6         # write results/review.html (what the pharmacist would see)
+python -m rxproto coverage             # what the rule book catches with no model (free)
 Set RX_FAKE=1 to dry-run everything without a key (the scores only test the code).
 """
 import argparse
@@ -34,13 +35,14 @@ def cmd_run(args):
     if os.getenv("RX_FAKE") == "1":
         from .fake import fake
     RES.mkdir(exist_ok=True)
-    for setup in (["A", "B"] if args.setup == "both" else [args.setup]):
+    for setup in ({"all": ["A", "B", "C"], "both": ["A", "B"]}.get(args.setup) or [args.setup]):
         out = []
         for k, rec in enumerate(recs, 1):
             img = generate.OUT_DIR / "images" / f"{rec['id']}.png"
             before = (llm.USAGE.calls + llm.USAGE.cached, {m: list(v) for m, v in llm.USAGE.tokens.items()}, llm.USAGE.seconds)
             try:
-                r = readers.run_a(rec, img, fake) if setup == "A" else readers.run_b(rec, img, hist, fake)
+                r = (readers.run_a(rec, img, fake) if setup == "A" else readers.run_b(rec, img, hist, fake) if setup == "B"
+                     else readers.run_c(rec, img, hist, fake))
             except llm.CallLimitReached as e:
                 print(f"\nStopped: {e}")
                 break
@@ -56,7 +58,7 @@ def cmd_run(args):
 
 def cmd_score(args):
     recs = generate.load_labels()
-    results = {s: _load_results(s) for s in ("A", "B")}
+    results = {s: _load_results(s) for s in ("A", "B", "C")}
     results = {s: v for s, v in results.items() if v}
     if not results:
         sys.exit("No results yet. Run: python -m rxproto run --setup both")
@@ -105,8 +107,9 @@ def main():
     sub.add_parser("build-dpd")
     g = sub.add_parser("generate"); g.add_argument("--n", type=int, default=150)
     sub.add_parser("models")
-    r = sub.add_parser("run"); r.add_argument("--setup", choices=["A", "B", "both"], default="both"); r.add_argument("--limit", type=int, default=0)
+    r = sub.add_parser("run"); r.add_argument("--setup", choices=["A", "B", "C", "both", "all"], default="all"); r.add_argument("--limit", type=int, default=0)
     sub.add_parser("score")
+    sub.add_parser("coverage")
     v = sub.add_parser("review"); v.add_argument("--n", type=int, default=6)
     a = ap.parse_args()
     if a.cmd == "build-dpd":
@@ -121,6 +124,12 @@ def main():
         cmd_score(a)
     elif a.cmd == "review":
         cmd_review(a)
+    elif a.cmd == "coverage":
+        from . import coverage
+        RES.mkdir(exist_ok=True)
+        text = coverage.report(coverage.run(generate.load_labels()))
+        (RES / "rulebook_coverage.md").write_text(text, encoding="utf-8")
+        print(text)
 
 
 if __name__ == "__main__":
