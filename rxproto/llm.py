@@ -65,7 +65,9 @@ def _client():
     key = os.getenv("GEMINI_API_KEY")
     if not key:
         raise SystemExit("GEMINI_API_KEY is empty. Put a key in .env (see .env.example), or set RX_FAKE=1 for a dry run.")
-    return genai.Client(api_key=key)
+    from google.genai import types
+    timeout_ms = int(float(os.getenv("RX_HTTP_TIMEOUT", "90")) * 1000)
+    return genai.Client(api_key=key, http_options=types.HttpOptions(timeout=timeout_ms))
 
 
 def list_models():
@@ -102,11 +104,13 @@ def ask_image(model, image_bytes, prompt, schema, tag, fake_answer=None):
 def _real_call(model, image_bytes, prompt, schema):
     from google.genai import types
     client = _client()
-    cfg = dict(temperature=0, response_mime_type="application/json", response_schema=schema)
+    cfg = dict(response_mime_type="application/json", response_schema=schema)
+    if not model.startswith("gemini-3"):  # Gemini 3 models are tuned for the default temperature
+        cfg["temperature"] = 0
     if os.getenv("RX_THINKING_BUDGET"):
         cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=int(os.getenv("RX_THINKING_BUDGET")))
     gap = float(os.getenv("RX_MIN_SECONDS", "6.5"))
-    for attempt in range(6):
+    for attempt in range(int(os.getenv("RX_RETRIES", "6"))):
         wait = _last_call[0] + gap - time.time()
         if wait > 0:
             time.sleep(wait)
@@ -125,6 +129,7 @@ def _real_call(model, image_bytes, prompt, schema):
             return answer, tokens, secs
         except Exception as e:  # rate limits and transient errors: back off and retry
             msg = str(e)
-            if attempt == 5 or not any(k in msg for k in ("429", "RESOURCE_EXHAUSTED", "500", "503", "UNAVAILABLE", "DEADLINE")):
+            if attempt == int(os.getenv("RX_RETRIES", "6")) - 1 or not any(k in msg for k in ("429", "RESOURCE_EXHAUSTED", "500", "503", "UNAVAILABLE", "DEADLINE")):
                 raise
-            time.sleep(min(90, 10 * (2 ** attempt)) + random.random() * 3)
+            print(f"  retry {attempt + 1} on {model}: {msg[:70]}", flush=True)
+            time.sleep(min(60, 5 * (2 ** attempt)) + random.random() * 3)
