@@ -50,6 +50,16 @@ class Usage:
 USAGE = Usage()
 _last_call = [0.0]
 
+# USD per 1M tokens (input, output incl. thinking); used for the hard spending cap RX_MAX_USD
+PRICES = {"gemini-3.5-flash-lite": (0.3, 2.5), "gemini-3.5-flash": (1.5, 9.0), "gemini-3-flash-preview": (0.5, 3.0),
+          "gemini-3.1-pro-preview": (2.0, 12.0), "gemini-4-argon": (2.0, 10.0), "gemini-2.5-flash": (0.3, 2.5), "gemini-2.5-pro": (1.25, 10.0)}
+SPENT = [0.0]  # new (uncached) spend this process, in USD
+
+
+def _charge(model, tokens):
+    pin, pout = PRICES.get(model, (2.0, 12.0))  # unknown model: assume Pro prices (safe side)
+    SPENT[0] += tokens[0] / 1e6 * pin + (tokens[1] + tokens[2]) / 1e6 * pout
+
 
 def model_names():
     return os.getenv("RX_MODEL_FAST", "gemini-flash-latest"), os.getenv("RX_MODEL_STRONG", "gemini-pro-latest")
@@ -96,7 +106,18 @@ def ask_image(model, image_bytes, prompt, schema, tag, fake_answer=None):
     else:
         if USAGE.calls >= int(os.getenv("RX_MAX_CALLS", "800")):
             raise CallLimitReached(f"RX_MAX_CALLS={os.getenv('RX_MAX_CALLS', '800')} reached; rerun to continue (cached calls are free).")
-        answer, tokens, secs = _real_call(model, image_bytes, prompt, schema)
+        cap = float(os.getenv("RX_MAX_USD", "0") or 0)
+        if cap and SPENT[0] >= cap:
+            raise CallLimitReached(f"RX_MAX_USD={cap} reached (spent ${SPENT[0]:.2f}); rerun to continue (cached calls are free).")
+        if os.getenv("OPENROUTER_API_KEY"):
+            answer, tokens, secs, cost = _openrouter_call(model, image_bytes, prompt, schema)
+            if cost is None:
+                _charge(model, tokens)
+            else:
+                SPENT[0] += cost
+        else:
+            answer, tokens, secs = _real_call(model, image_bytes, prompt, schema)
+            _charge(model, tokens)
     USAGE.calls += 1
     USAGE.add(model, *tokens, secs)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,3 +157,58 @@ def _real_call(model, image_bytes, prompt, schema):
                 raise
             print(f"  retry {attempt + 1} on {model}: {msg[:70]}", flush=True)
             time.sleep(min(60, 5 * (2 ** attempt)) + random.random() * 3)
+
+
+def _openrouter_call(model, image_bytes, prompt, schema):
+    """Same Gemini models through OpenRouter (OpenAI-style API). Used when OPENROUTER_API_KEY is set.
+    Returns (answer, [in, out, thinking], seconds, exact USD cost reported by OpenRouter or None)."""
+    import base64
+    import urllib.error
+    import urllib.request
+    name = model if "/" in model else "google/" + model
+    body = {
+        "model": name,
+        "messages": [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(image_bytes).decode()}},
+            {"type": "text", "text": prompt + "\n\nReturn only JSON that matches the schema."}]}],
+        "response_format": {"type": "json_schema", "json_schema": {"name": "answer", "strict": False, "schema": schema.model_json_schema()}},
+        "usage": {"include": True},
+    }
+    if model.startswith(("gemini-1", "gemini-2")):
+        body["temperature"] = 0
+    data = json.dumps(body).encode()
+    gap = float(os.getenv("RX_MIN_SECONDS", "0.3"))
+    tries = int(os.getenv("RX_RETRIES", "6"))
+    for attempt in range(tries):
+        wait = _last_call[0] + gap - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        t0 = time.time()
+        _last_call[0] = t0
+        try:
+            req = urllib.request.Request("https://openrouter.ai/api/v1/chat/completions", data=data, headers={
+                "Authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"], "Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=float(os.getenv("RX_HTTP_TIMEOUT", "120"))) as resp:
+                r = json.loads(resp.read().decode())
+            if "error" in r:
+                raise RuntimeError(f"{r['error'].get('code')} {r['error'].get('message')}")
+            text = r["choices"][0]["message"]["content"] or ""
+            text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            raw = json.loads(text)
+            try:
+                answer = schema.model_validate(raw).model_dump()
+            except Exception:
+                answer = raw
+            u = r.get("usage") or {}
+            think = ((u.get("completion_tokens_details") or {}).get("reasoning_tokens")) or 0
+            tokens = [u.get("prompt_tokens", 0) or 0, max(0, (u.get("completion_tokens", 0) or 0) - think), think]
+            return answer, tokens, time.time() - t0, u.get("cost")
+        except Exception as e:
+            msg = str(e)
+            if isinstance(e, urllib.error.HTTPError):
+                msg = f"{e.code} {e.read().decode()[:200]}"
+            retryable = any(k in msg for k in ("429", "500", "502", "503", "504", "timed out", "Expecting", "10054", "10060", "onnection", "reset", "RemoteDisconnected", "URLError", "EOF"))
+            if attempt == tries - 1 or not retryable:
+                raise RuntimeError(f"OpenRouter call failed on {name}: {msg[:300]}")
+            print(f"  retry {attempt + 1} on {name}: {msg[:70]}", flush=True)
+            time.sleep(min(30, 3 * (2 ** attempt)) + random.random() * 2)

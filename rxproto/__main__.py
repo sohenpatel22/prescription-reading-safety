@@ -50,7 +50,7 @@ def cmd_run(args):
                               tokens={m: [a - b for a, b in zip(v, before[1].get(m, [0, 0, 0]))] for m, v in llm.USAGE.tokens.items()})
             out.append(r)
             if k % 10 == 0 or k == len(recs):
-                print(f"{setup}: {k}/{len(recs)} done (new calls {llm.USAGE.calls}, from cache {llm.USAGE.cached})", flush=True)
+                print(f"{setup}: {k}/{len(recs)} done (new calls {llm.USAGE.calls}, from cache {llm.USAGE.cached}, spent ${llm.SPENT[0]:.2f})", flush=True)
         with open(RES / f"{setup}.jsonl", "w", encoding="utf-8") as f:
             for r in out:
                 f.write(json.dumps(r) + "\n")
