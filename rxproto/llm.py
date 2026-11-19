@@ -63,6 +63,9 @@ def _client():
         return genai.Client(vertexai=True, project=os.getenv("GOOGLE_CLOUD_PROJECT"),
                             location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"))
     key = os.getenv("GEMINI_API_KEY")
+    if key and os.getenv("RX_VERTEX_API_KEY", "").lower() in ("1", "true"):  # Vertex AI express mode: Google Cloud API key
+        from google.genai import types
+        return genai.Client(vertexai=True, api_key=key, http_options=types.HttpOptions(timeout=int(float(os.getenv("RX_HTTP_TIMEOUT", "90")) * 1000)))
     if not key:
         raise SystemExit("GEMINI_API_KEY is empty. Put a key in .env (see .env.example), or set RX_FAKE=1 for a dry run.")
     from google.genai import types
@@ -105,7 +108,7 @@ def _real_call(model, image_bytes, prompt, schema):
     from google.genai import types
     client = _client()
     cfg = dict(response_mime_type="application/json", response_schema=schema)
-    if not model.startswith("gemini-3"):  # Gemini 3 models are tuned for the default temperature
+    if model.startswith(("gemini-1", "gemini-2")):  # Gemini 3+ models are tuned for the default temperature
         cfg["temperature"] = 0
     if os.getenv("RX_THINKING_BUDGET"):
         cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=int(os.getenv("RX_THINKING_BUDGET")))
